@@ -1,0 +1,13 @@
+network:
+    listen_port: 0
+    bootstrap_peers: []
+    enable_mdns: true
+    enable_dht: true
+ui:
+    theme: default
+    refresh_rate_ms: 100
+    max_post_length: 280
+privacy:
+    encrypt_messages: true
+    key_path: socli.key
+    auto_clear_on_exit: true
