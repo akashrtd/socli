@@ -6,6 +6,7 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 )
@@ -14,6 +15,9 @@ import (
 type NetworkManager struct {
 	Host host.Host
 	cfg  *config.Config
+	// onPeerConnected is a callback function to notify when a new peer is connected.
+	// This is set by the application (e.g., in main.go) to link discovery to the app logic (like TUI).
+	onPeerConnected func(peer.ID) 
 }
 
 // NewNetworkManager creates and initializes a new libp2p host.
@@ -33,19 +37,25 @@ func NewNetworkManager(cfg *config.Config) (*NetworkManager, error) {
 	return &NetworkManager{
 		Host: h,
 		cfg:  cfg,
+		// onPeerConnected will be set later by the application
 	}, nil
+}
+
+// SetPeerConnectedCallback sets the callback function to be called when a peer is connected.
+func (nm *NetworkManager) SetPeerConnectedCallback(callback func(peer.ID)) {
+	nm.onPeerConnected = callback
 }
 
 // Start begins the networking operations like peer discovery.
 func (nm *NetworkManager) Start(ctx context.Context) error {
 	if nm.cfg.Network.EnableMDNS {
-		if err := setupMDNSDiscovery(ctx, nm.Host); err != nil {
+		if err := setupMDNSDiscovery(ctx, nm.Host, nm.onPeerConnected); err != nil {
 			return err
 		}
 	}
 
 	if nm.cfg.Network.EnableDHT {
-		if _, err := setupDHTDiscovery(ctx, nm.Host); err != nil {
+		if _, err := setupDHTDiscovery(ctx, nm.Host, nm.onPeerConnected); err != nil {
 			return err
 		}
 	}

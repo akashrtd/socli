@@ -4,18 +4,25 @@ import (
 	"context"
 	"fmt"
 	"socli/content"
+	"socli/crypto"
+	"socli/internal"
 	"socli/messaging"
 	"socli/p2p"
 	"socli/storage"
 	"socli/tui/views"
-	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 // PostReceivedMsg is a message that is sent when a new post is received.
 type PostReceivedMsg struct{ Post *messaging.Message }
+
+// PeerConnectedMsg is a message sent when a new peer is discovered and connected.
+type PeerConnectedMsg struct {
+	PeerID string
+}
 
 // AppModel represents the main application model.
 type AppModel struct {
@@ -23,18 +30,22 @@ type AppModel struct {
 	store       *storage.MemoryStore
 	renderer    *content.MarkdownRenderer
 	composeView *views.ComposeView
+	feedView    *views.FeedView // Add FeedView
 	broadcaster *messaging.Broadcaster
+	keyPair     *crypto.KeyPair // Local node's keypair for signing
 	currentView string
 }
 
 // NewApp creates and returns a new application model.
-func NewApp(netManager *p2p.NetworkManager, store *storage.MemoryStore, renderer *content.MarkdownRenderer, broadcaster *messaging.Broadcaster) (*AppModel, error) {
+func NewApp(netManager *p2p.NetworkManager, store *storage.MemoryStore, renderer *content.MarkdownRenderer, broadcaster *messaging.Broadcaster, keyPair *crypto.KeyPair) (*AppModel, error) {
 	return &AppModel{
 		netManager:  netManager,
 		store:       store,
 		renderer:    renderer,
 		composeView: views.NewComposeView(),
+		feedView:    views.NewFeedView(store, renderer), // Initialize FeedView
 		broadcaster: broadcaster,
+		keyPair:     keyPair, // Pass the keypair for signing
 		currentView: "feed",
 	}, nil
 }
@@ -60,13 +71,34 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "compose":
 			switch msg.String() {
 			case "enter":
-				msg := &messaging.Message{
-					Author:    m.netManager.Host.ID().String(),
-					Content:   m.composeView.Value(),
-					Hashtags:  []string{"general"},
-					Timestamp: time.Now(),
+				content := m.composeView.Value()
+				fmt.Printf("Debug: Compose view content is '%s'\n", content) // Debug print
+				if content != "" { // Only send non-empty messages
+					// 1. Create Message struct
+					msg := &messaging.Message{
+						ID:        uuid.New().String(), // Generate unique ID
+						Author:    m.netManager.Host.ID().String(),
+						Content:   content,
+						Hashtags:  internal.ExtractHashtags(content), // Extract hashtags
+						Timestamp: time.Now(),
+						Type:      messaging.PostMsg, // Set message type
+					}
+
+					// 2. Sign the message
+					// For simplicity, we'll sign the content. A more robust approach
+					// might sign a hash of the entire message or specific fields.
+					signature, err := crypto.SignMessage([]byte(msg.Content), m.keyPair.PrivateKey)
+					if err != nil {
+						// TODO: Handle signing error in UI
+						fmt.Printf("Error signing message: %v\n", err)
+					} else {
+						msg.Signature = signature
+					}
+
+					// 3. Broadcast the message
+					fmt.Printf("Debug: Sending message - ID: %s, Content: '%s', Hashtags: %v\n", msg.ID, msg.Content, msg.Hashtags) // Debug print
+					m.broadcaster.Broadcast(context.Background(), msg)
 				}
-				m.broadcaster.Broadcast(context.Background(), msg)
 				m.currentView = "feed"
 				return m, nil
 			case "esc":
@@ -76,6 +108,11 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case PostReceivedMsg:
 		m.store.AddPost(msg.Post)
+		return m, nil
+	case PeerConnectedMsg:
+		// TODO: Update store or UI with new peer info
+		// For now, just log it
+		fmt.Printf("TUI notified of peer connected: %s\n", msg.PeerID)
 		return m, nil
 	}
 
@@ -94,24 +131,6 @@ func (m *AppModel) View() string {
 		return m.composeView.View()
 	}
 
-	var s strings.Builder
-	s.WriteString("Welcome to socli!\n\n")
-
-	posts := m.store.GetAllPosts()
-	for _, post := range posts {
-		rendered, err := m.renderer.Render(post.Content)
-		if err != nil {
-			rendered = post.Content
-		}
-		s.WriteString(fmt.Sprintf("From: %s\n%s\n\n", post.Author, rendered))
-	}
-
-	s.WriteString("---\n")
-	s.WriteString(fmt.Sprintf("My Peer ID is: %s\n", m.netManager.Host.ID()))
-	s.WriteString("Listening on:\n")
-	for _, addr := range m.netManager.Host.Addrs() {
-		s.WriteString(fmt.Sprintf("- %s\n", addr))
-	}
-	s.WriteString("\nPress 'c' to compose, 'q' to quit.")
-	return s.String()
+	// Default to feed view
+	return m.feedView.View()
 }

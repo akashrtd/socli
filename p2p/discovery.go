@@ -11,28 +11,39 @@ import (
 )
 
 // discoveryNotifee handles peer discovery notifications.
+// It now also sends a notification to the TUI.
 type discoveryNotifee struct {
-	h host.Host
+	h             host.Host
+	peerConnected func(peer.ID) // Callback function to notify about connected peers
 }
 
-// HandlePeerFound connects to peers discovered via mDNS.
+// HandlePeerFound connects to peers discovered via mDNS and notifies the application.
 func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
-	log.Printf("Discovered a new peer: %s\n", pi.ID.String())
+	log.Printf("Discovery: Found new peer: %s\n", pi.ID.String()) // Changed log message
 	err := n.h.Connect(context.Background(), pi)
 	if err != nil {
-		log.Printf("Error connecting to peer %s: %s\n", pi.ID.String(), err)
+		log.Printf("Discovery: Error connecting to peer %s: %s\n", pi.ID.String(), err)
+		return // Don't notify if connection failed
+	}
+	log.Printf("Discovery: Successfully connected to peer: %s\n", pi.ID.String()) // Add success log
+
+	// Notify the application (e.g., TUI) about the newly connected peer
+	if n.peerConnected != nil {
+		n.peerConnected(pi.ID)
 	}
 }
 
 // setupMDNSDiscovery initializes mDNS for local peer discovery.
-func setupMDNSDiscovery(ctx context.Context, h host.Host) error {
+// It accepts a callback for peer connection notifications.
+func setupMDNSDiscovery(ctx context.Context, h host.Host, onPeerConnected func(peer.ID)) error {
 	// setup mDNS discovery
-	service := mdns.NewMdnsService(h, "socli-discovery", &discoveryNotifee{h: h})
+	service := mdns.NewMdnsService(h, "socli-discovery", &discoveryNotifee{h: h, peerConnected: onPeerConnected})
 	return service.Start()
 }
 
 // setupDHTDiscovery initializes the Kademlia DHT for global peer discovery.
-func setupDHTDiscovery(ctx context.Context, h host.Host) (*dht.IpfsDHT, error) {
+// It accepts a callback for peer connection notifications.
+func setupDHTDiscovery(ctx context.Context, h host.Host, onPeerConnected func(peer.ID)) (*dht.IpfsDHT, error) {
 	// Start a DHT, for use in peer discovery.
 	kademliaDHT, err := dht.New(ctx, h)
 	if err != nil {
