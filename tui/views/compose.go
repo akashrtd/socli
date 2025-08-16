@@ -1,6 +1,7 @@
 package views
 
 import (
+	"socli/config"
 	"socli/tui/components"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -12,9 +13,14 @@ type ComposeView struct {
 }
 
 // NewComposeView creates a new compose view.
-func NewComposeView() *ComposeView {
+// It uses the max post length from the config.
+func NewComposeView(cfg *config.Config) *ComposeView {
+	maxLength := cfg.UI.MaxPostLength
+	if maxLength <= 0 {
+		maxLength = 280 // Default fallback
+	}
 	return &ComposeView{
-		input: components.NewInput(),
+		input: components.NewInput(maxLength),
 	}
 }
 

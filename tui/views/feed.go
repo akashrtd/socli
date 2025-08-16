@@ -28,6 +28,8 @@ func NewFeedView(store *storage.MemoryStore, renderer *content.MarkdownRenderer)
 }
 
 // View renders the feed, considering the scroll offset.
+// The width and height parameters are provided by the main AppModel.View
+// for potential future use (e.g., with a viewport).
 func (v *FeedView) View(width, height int) string {
 	var b strings.Builder
 
@@ -39,34 +41,35 @@ func (v *FeedView) View(width, height int) string {
 	}
 
 	// Display posts in reverse chronological order (newest first)
-	// We need to calculate how many posts can fit in the given height.
-	// This is a simplified calculation. A full implementation might
-	// involve measuring rendered content height.
-	availableLines := height - 2 // Reserve lines for header/footer if needed
-	if availableLines <= 0 {
-		availableLines = 1
-	}
-
-	displayedPosts := 0
+	// Simplified scrolling logic for now.
+	// A more robust implementation would use a viewport or calculate
+	// rendered content height.
+	
+	// For this prototype, let's display a fixed number of recent posts
+	// or all posts if fewer than the limit.
+	const maxPostsToDisplay = 50
+	displayedCount := 0
 	startIndex := len(posts) - 1 - v.offset
 	if startIndex < 0 {
 		startIndex = 0
 	}
 
-	for i := startIndex; i >= 0 && displayedPosts < availableLines; i-- {
-		post := posts[i]
-		postLines := v.renderPost(post)
-		// A very rough estimate: assume post takes a few lines.
-		// A more accurate way would be to split `postLines` and count.
-		// For now, we'll use a simple heuristic or just display a fixed number.
-		// Let's simplify and show a fixed number of posts for now,
-		// and refine scrolling logic later.
-		b.WriteString(postLines)
-		b.WriteString("\n---\n") // Separator between posts
-		displayedPosts++
+	// Adjust startIndex to ensure we don't exceed maxPostsToDisplay
+	// unless offset pushes us beyond that.
+	endIndex := startIndex - maxPostsToDisplay + 1
+	if endIndex < 0 {
+		endIndex = 0
 	}
 
-	// If we are scrolled, indicate it
+	for i := startIndex; i >= endIndex && i >= 0 && displayedCount < maxPostsToDisplay; i-- {
+		post := posts[i]
+		postLines := v.renderPost(post)
+		b.WriteString(postLines)
+		b.WriteString("\n---\n") // Separator between posts
+		displayedCount++
+	}
+
+	// Indicate if scrolled
 	if v.offset > 0 {
 		b.WriteString(fmt.Sprintf("\n(Scrolled up by %d posts. Press 'j' to scroll down, 'k' to scroll up)\n", v.offset))
 	}
@@ -77,6 +80,8 @@ func (v *FeedView) View(width, height int) string {
 // ScrollUp moves the view up by one post (if possible).
 func (v *FeedView) ScrollUp() {
 	posts := v.store.GetAllPosts()
+	// Allow scrolling up until we're showing the newest post at the bottom
+	// of the display limit.
 	if v.offset < len(posts)-1 {
 		v.offset++
 	}

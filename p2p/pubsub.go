@@ -7,6 +7,9 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 )
 
+// Ensure PubSubManager implements PubSubManagerInterface.
+var _ PubSubManagerInterface = (*PubSubManager)(nil)
+
 // PubSubManager manages the GossipSub protocol for real-time messaging.
 type PubSubManager struct {
 	ps *pubsub.PubSub

@@ -1,7 +1,7 @@
 package storage
 
 import (
-	"socli/messaging"
+	"socli/messaging" // Import the messaging package for Message struct
 	"sync"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -72,4 +72,13 @@ func (s *MemoryStore) GetAllPeers() []peer.AddrInfo {
 		peers = append(peers, peer)
 	}
 	return peers
+}
+
+// Clear removes all posts and peers from the store.
+// This satisfies the privacy.Privacy requirement for auto-clear.
+func (s *MemoryStore) Clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.posts = make(map[string]*messaging.Message)
+	s.peers = make(map[peer.ID]peer.AddrInfo)
 }
